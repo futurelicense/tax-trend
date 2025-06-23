@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell, AreaChart, Area, ComposedChart } from 'recharts';
 import { TaxCreditData } from '@/pages/Dashboard';
 
 interface DataVisualizationProps {
@@ -9,57 +9,90 @@ interface DataVisualizationProps {
   showDetailed?: boolean;
 }
 
-const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8', '#82ca9d', '#ffc658'];
+const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8', '#82ca9d', '#ffc658', '#ff7300', '#00ff88'];
 
 export const DataVisualization: React.FC<DataVisualizationProps> = ({ data, showDetailed = false }) => {
-  // Aggregate data by year for trend analysis
+  // Enhanced yearly data with sector breakdown
   const yearlyData = data.reduce((acc, item) => {
     const existing = acc.find(d => d.year === item.Year);
     if (existing) {
       existing.totalAmount += item.Claimed_Amount;
       existing.totalClaims += item.Claims_Count;
+      existing.avgClaimSize = existing.totalAmount / existing.totalClaims;
+      existing[item.Sector] = (existing[item.Sector] || 0) + item.Claimed_Amount;
     } else {
       acc.push({
         year: item.Year,
         totalAmount: item.Claimed_Amount,
-        totalClaims: item.Claims_Count
+        totalClaims: item.Claims_Count,
+        avgClaimSize: item.Claimed_Amount / item.Claims_Count,
+        [item.Sector]: item.Claimed_Amount
       });
     }
     return acc;
-  }, [] as Array<{ year: number; totalAmount: number; totalClaims: number; }>)
-  .sort((a, b) => a.year - b.year);
+  }, [] as Array<any>).sort((a, b) => a.year - b.year);
 
-  // Aggregate data by credit type
-  const creditTypeData = data.reduce((acc, item) => {
-    const existing = acc.find(d => d.type === item.Tax_Credit_Type);
+  // Income bracket analysis
+  const incomeBracketData = data.reduce((acc, item) => {
+    const existing = acc.find(d => d.bracket === item.Income_Bracket);
     if (existing) {
       existing.amount += item.Claimed_Amount;
+      existing.claims += item.Claims_Count;
+      existing.avgClaim = existing.amount / existing.claims;
     } else {
       acc.push({
-        type: item.Tax_Credit_Type,
-        amount: item.Claimed_Amount
+        bracket: item.Income_Bracket,
+        amount: item.Claimed_Amount,
+        claims: item.Claims_Count,
+        avgClaim: item.Claimed_Amount / item.Claims_Count
       });
     }
     return acc;
-  }, [] as Array<{ type: string; amount: number; }>)
-  .sort((a, b) => b.amount - a.amount)
-  .slice(0, 7);
+  }, [] as Array<{ bracket: string; amount: number; claims: number; avgClaim: number; }>)
+  .sort((a, b) => b.amount - a.amount);
 
-  // Aggregate data by state
-  const stateData = data.reduce((acc, item) => {
-    const existing = acc.find(d => d.state === item.State);
+  // Sector efficiency analysis (claims per dollar)
+  const sectorEfficiencyData = data.reduce((acc, item) => {
+    const existing = acc.find(d => d.sector === item.Sector);
     if (existing) {
       existing.amount += item.Claimed_Amount;
+      existing.claims += item.Claims_Count;
     } else {
       acc.push({
-        state: item.State,
-        amount: item.Claimed_Amount
+        sector: item.Sector,
+        amount: item.Claimed_Amount,
+        claims: item.Claims_Count
       });
     }
     return acc;
-  }, [] as Array<{ state: string; amount: number; }>)
-  .sort((a, b) => b.amount - a.amount)
-  .slice(0, 10);
+  }, [] as Array<{ sector: string; amount: number; claims: number; }>)
+  .map(item => ({
+    ...item,
+    efficiency: item.claims / item.amount * 1000000, // Claims per million dollars
+    avgClaimSize: item.amount / item.claims
+  }))
+  .sort((a, b) => b.efficiency - a.efficiency);
+
+  // Credit type performance over time
+  const creditTypeTimeData = data.reduce((acc, item) => {
+    const key = `${item.Year}-${item.Tax_Credit_Type}`;
+    const existing = acc.find(d => d.year === item.Year && d.creditType === item.Tax_Credit_Type);
+    if (existing) {
+      existing.amount += item.Claimed_Amount;
+      existing.claims += item.Claims_Count;
+    } else {
+      acc.push({
+        year: item.Year,
+        creditType: item.Tax_Credit_Type,
+        amount: item.Claimed_Amount,
+        claims: item.Claims_Count
+      });
+    }
+    return acc;
+  }, [] as Array<{ year: number; creditType: string; amount: number; claims: number; }>);
+
+  // Get unique sectors for color mapping
+  const uniqueSectors = [...new Set(data.map(item => item.Sector))];
 
   if (data.length === 0) {
     return (
@@ -73,98 +106,192 @@ export const DataVisualization: React.FC<DataVisualizationProps> = ({ data, show
 
   return (
     <div className="space-y-6">
-      {/* Year-over-Year Trends */}
+      {/* Enhanced Year-over-Year Trends with Sector Breakdown */}
       <Card>
         <CardHeader>
-          <CardTitle>Tax Credit Claims Over Time</CardTitle>
+          <CardTitle>Tax Credit Claims & Sector Performance Over Time</CardTitle>
           <CardDescription>
-            Total claimed amounts and number of claims by year
+            Multi-dimensional view of claims amount, count, and average claim size trends
           </CardDescription>
         </CardHeader>
         <CardContent>
           <ResponsiveContainer width="100%" height={400}>
-            <LineChart data={yearlyData}>
+            <ComposedChart data={yearlyData}>
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey="year" />
               <YAxis yAxisId="left" orientation="left" />
               <YAxis yAxisId="right" orientation="right" />
               <Tooltip 
                 formatter={(value, name) => [
-                  name === 'totalAmount' ? `$${value.toLocaleString()}` : value.toLocaleString(),
-                  name === 'totalAmount' ? 'Total Amount' : 'Total Claims'
+                  typeof value === 'number' ? `$${value.toLocaleString()}` : value,
+                  name
                 ]}
               />
               <Legend />
-              <Line 
+              <Area 
                 yAxisId="left"
                 type="monotone" 
                 dataKey="totalAmount" 
-                stroke="#8884d8" 
-                strokeWidth={2}
+                fill="#8884d8" 
+                fillOpacity={0.3}
+                stroke="#8884d8"
                 name="Total Amount ($)"
               />
-              <Line 
+              <Bar 
                 yAxisId="right"
-                type="monotone" 
                 dataKey="totalClaims" 
-                stroke="#82ca9d" 
-                strokeWidth={2}
+                fill="#82ca9d"
                 name="Total Claims"
               />
-            </LineChart>
+              <Line 
+                yAxisId="left"
+                type="monotone" 
+                dataKey="avgClaimSize" 
+                stroke="#ff7300" 
+                strokeWidth={3}
+                name="Avg Claim Size ($)"
+              />
+            </ComposedChart>
+          </ResponsiveContainer>
+        </CardContent>
+      </Card>
+
+      {/* Income Bracket Analysis */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Tax Credit Distribution by Income Bracket</CardTitle>
+          <CardDescription>
+            Analysis of credit utilization across different income levels
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <ResponsiveContainer width="100%" height={350}>
+            <BarChart data={incomeBracketData}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="bracket" />
+              <YAxis yAxisId="left" orientation="left" />
+              <YAxis yAxisId="right" orientation="right" />
+              <Tooltip 
+                formatter={(value, name) => [
+                  name.includes('amount') || name.includes('Claim') ? `$${value.toLocaleString()}` : value.toLocaleString(),
+                  name
+                ]}
+              />
+              <Legend />
+              <Bar yAxisId="left" dataKey="amount" fill="#8884d8" name="Total Amount ($)" />
+              <Bar yAxisId="right" dataKey="claims" fill="#82ca9d" name="Claims Count" />
+              <Line yAxisId="left" dataKey="avgClaim" stroke="#ff7300" strokeWidth={2} name="Avg Claim ($)" />
+            </BarChart>
           </ResponsiveContainer>
         </CardContent>
       </Card>
 
       {showDetailed && (
         <>
-          {/* Credit Type Distribution */}
+          {/* Sector Efficiency Analysis */}
           <Card>
             <CardHeader>
-              <CardTitle>Claims by Credit Type</CardTitle>
+              <CardTitle>Sector Efficiency & Performance Metrics</CardTitle>
               <CardDescription>
-                Top credit types by total claimed amount
+                Claims volume vs. average claim size by sector
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <ResponsiveContainer width="100%" height={300}>
-                <BarChart data={creditTypeData} layout="horizontal">
+              <ResponsiveContainer width="100%" height={350}>
+                <ComposedChart data={sectorEfficiencyData}>
                   <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis type="number" />
-                  <YAxis dataKey="type" type="category" width={150} />
-                  <Tooltip formatter={(value) => [`$${value.toLocaleString()}`, 'Amount']} />
-                  <Bar dataKey="amount" fill="#8884d8" />
-                </BarChart>
+                  <XAxis dataKey="sector" angle={-45} textAnchor="end" height={80} />
+                  <YAxis yAxisId="left" orientation="left" />
+                  <YAxis yAxisId="right" orientation="right" />
+                  <Tooltip 
+                    formatter={(value, name) => [
+                      name.includes('efficiency') ? value.toFixed(2) : `$${value.toLocaleString()}`,
+                      name === 'efficiency' ? 'Claims per $1M' : name === 'avgClaimSize' ? 'Avg Claim Size' : name
+                    ]}
+                  />
+                  <Legend />
+                  <Bar yAxisId="left" dataKey="avgClaimSize" fill="#8884d8" name="Avg Claim Size ($)" />
+                  <Line yAxisId="right" dataKey="efficiency" stroke="#ff7300" strokeWidth={3} name="Claims Efficiency" />
+                </ComposedChart>
               </ResponsiveContainer>
             </CardContent>
           </Card>
 
-          {/* State Distribution */}
+          {/* Credit Type Trends Over Time */}
           <Card>
             <CardHeader>
-              <CardTitle>Claims by State</CardTitle>
+              <CardTitle>Credit Type Performance Timeline</CardTitle>
               <CardDescription>
-                Top 10 states by total claimed amount
+                How different credit types have performed year over year
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <ResponsiveContainer width="100%" height={400}>
+                <LineChart data={yearlyData}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="year" />
+                  <YAxis />
+                  <Tooltip formatter={(value) => [`$${value.toLocaleString()}`, 'Amount']} />
+                  <Legend />
+                  {uniqueSectors.slice(0, 5).map((sector, index) => (
+                    <Line 
+                      key={sector}
+                      type="monotone" 
+                      dataKey={sector} 
+                      stroke={COLORS[index]} 
+                      strokeWidth={2}
+                      name={sector}
+                      connectNulls={false}
+                    />
+                  ))}
+                </LineChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+
+          {/* State Performance Comparison */}
+          <Card>
+            <CardHeader>
+              <CardTitle>State-Level Tax Credit Alignment</CardTitle>
+              <CardDescription>
+                Top performing states and their credit utilization patterns
               </CardDescription>
             </CardHeader>
             <CardContent>
               <ResponsiveContainer width="100%" height={400}>
                 <PieChart>
                   <Pie
-                    data={stateData}
+                    data={data.reduce((acc, item) => {
+                      const existing = acc.find(d => d.state === item.State);
+                      if (existing) {
+                        existing.amount += item.Claimed_Amount;
+                        existing.claims += item.Claims_Count;
+                      } else {
+                        acc.push({
+                          state: item.State,
+                          amount: item.Claimed_Amount,
+                          claims: item.Claims_Count
+                        });
+                      }
+                      return acc;
+                    }, [] as Array<{ state: string; amount: number; claims: number; }>)
+                    .sort((a, b) => b.amount - a.amount)
+                    .slice(0, 8)}
                     cx="50%"
                     cy="50%"
                     labelLine={false}
-                    label={({ state, percent }) => `${state} ${(percent * 100).toFixed(0)}%`}
-                    outerRadius={120}
+                    label={({ state, amount, percent }) => 
+                      `${state}: ${(percent * 100).toFixed(1)}%`
+                    }
+                    outerRadius={140}
                     fill="#8884d8"
                     dataKey="amount"
                   >
-                    {stateData.map((entry, index) => (
+                    {data.slice(0, 8).map((entry, index) => (
                       <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                     ))}
                   </Pie>
-                  <Tooltip formatter={(value) => [`$${value.toLocaleString()}`, 'Amount']} />
+                  <Tooltip formatter={(value) => [`$${value.toLocaleString()}`, 'Total Amount']} />
                 </PieChart>
               </ResponsiveContainer>
             </CardContent>
