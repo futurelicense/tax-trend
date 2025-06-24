@@ -172,10 +172,14 @@ export const DataVisualization: React.FC<DataVisualizationProps> = ({ data, show
               <YAxis yAxisId="left" orientation="left" />
               <YAxis yAxisId="right" orientation="right" />
               <Tooltip 
-                formatter={(value, name) => [
-                  name.includes('amount') || name.includes('Claim') ? `$${value.toLocaleString()}` : value.toLocaleString(),
-                  name
-                ]}
+                formatter={(value, name) => {
+                  const nameStr = String(name);
+                  const valueNum = Number(value);
+                  return [
+                    nameStr.includes('amount') || nameStr.includes('Claim') ? `$${valueNum.toLocaleString()}` : valueNum.toLocaleString(),
+                    nameStr
+                  ];
+                }}
               />
               <Legend />
               <Bar yAxisId="left" dataKey="amount" fill="#8884d8" name="Total Amount ($)" />
@@ -204,10 +208,14 @@ export const DataVisualization: React.FC<DataVisualizationProps> = ({ data, show
                   <YAxis yAxisId="left" orientation="left" />
                   <YAxis yAxisId="right" orientation="right" />
                   <Tooltip 
-                    formatter={(value, name) => [
-                      name.includes('efficiency') ? value.toFixed(2) : `$${value.toLocaleString()}`,
-                      name === 'efficiency' ? 'Claims per $1M' : name === 'avgClaimSize' ? 'Avg Claim Size' : name
-                    ]}
+                    formatter={(value, name) => {
+                      const nameStr = String(name);
+                      const valueNum = Number(value);
+                      return [
+                        nameStr === 'efficiency' ? valueNum.toFixed(2) : `$${valueNum.toLocaleString()}`,
+                        nameStr === 'efficiency' ? 'Claims per $1M' : nameStr === 'avgClaimSize' ? 'Avg Claim Size' : nameStr
+                      ];
+                    }}
                   />
                   <Legend />
                   <Bar yAxisId="left" dataKey="avgClaimSize" fill="#8884d8" name="Avg Claim Size ($)" />
